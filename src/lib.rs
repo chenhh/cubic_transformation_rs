@@ -1,3 +1,6 @@
+use rand::prelude::*;
+use rand_distr::StandardNormal;
+
 pub struct Statistics {
     mean: f64,
     var: f64,
@@ -5,12 +8,15 @@ pub struct Statistics {
     ex_kurt: f64,
 }
 
-pub fn cubic_transformation(tgt_stats: &Statistics, n_scenario: u32) -> Vec<f64> {
-    let scenarios = Vec::new();
+pub fn cubic_transformation(tgt_stats: &Statistics, n_scenario: usize) -> Vec<f64> {
+    let scenarios = Vec::with_capacity(n_scenario);
+    init_params = [0f64, 1f64, 0f64, 0f64];
+    let val: f64 = thread_rng().sample(StandardNormal);
+
     scenarios
 }
 
-fn cubic_error(params: [f64; 4], EX: [f64; 12], EY: [f64; 4]) -> [f64; 4] {
+fn cubic_errors(params: [f64; 4], EX: [f64; 12], EY: [f64; 4]) -> [f64; 4] {
     let (a, b, c, d) = params;
     let (mut v1, mut v2, mut v3, mut v4) = (0f64, 0f64, 0f64, 0f64);
 
