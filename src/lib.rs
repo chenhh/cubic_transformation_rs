@@ -10,9 +10,10 @@ pub struct Statistics {
 }
 
 fn variance(samples: &Vec<f64>) -> f64 {
+    /* biased estimator, as the same default value of numpy.var */
     let n = samples.len();
     let mu = samples.iter().sum::<f64>() / n as f64;
-    let var = samples.iter().map(|x| (*x - mu).powf(2.)).sum::<f64>() / (n - 1) as f64;
+    let var = samples.iter().map(|x| (*x - mu).powf(2.)).sum::<f64>() / n as f64;
     var
 }
 
@@ -132,7 +133,20 @@ mod tests {
     fn test_variance() {
         let samples: Vec<f64> = (0..10).map(|x| x as f64).collect();
         let res = variance(&samples);
-        println!("variance:{res}");
-        assert_eq!(res, 8.25)
+        assert!((res - 9.166666) < 1e-3)
+    }
+
+    #[test]
+    fn test_skewness() {
+        let samples: Vec<f64> = (0..10).map(|x| x as f64).collect();
+        let res = skewness(&samples);
+        assert!((res - 0.) < 1e-3)
+    }
+
+    #[test]
+    fn test_kurtosis() {
+        let samples: Vec<f64> = (0..10).map(|x| x as f64).collect();
+        let res = kurtosis(&samples);
+        assert!((res - -1.2242424242424244) < 1e-3)
     }
 }
