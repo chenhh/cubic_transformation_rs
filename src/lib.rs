@@ -9,11 +9,11 @@ pub struct Statistics {
     n_sample: u32,
 }
 
-fn variance(samples: &Vec<f64>, bias: bool) -> f64 {
+fn variance(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of numpy.var */
     let n = samples.len() as f64;
     let mu = samples.iter().sum::<f64>() / n;
-    let mut var = samples.iter().map(|x| (*x - mu).powf(2.)).sum::<f64>();
+    let mut var = samples.iter().map(|x| (*x - mu) * (*x - mu)).sum::<f64>();
     if bias {
         var /= n;
     } else {
@@ -22,15 +22,16 @@ fn variance(samples: &Vec<f64>, bias: bool) -> f64 {
     var
 }
 
-fn skewness(samples: &Vec<f64>, bias: bool) -> f64 {
+fn skewness(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len() as f64;
     let mu = samples.iter().sum::<f64>() / n;
     let (mut m3, mut s3) = (0f64, 0f64);
 
     for v in samples {
-        m3 += (v - mu).powf(3.);
-        s3 += (v - mu).powf(2.);
+        let shift2 = (v - mu) * (v - mu);
+        s3 += shift2;
+        m3 += shift2 * (v - mu);
     }
 
     m3 /= n;
@@ -43,15 +44,16 @@ fn skewness(samples: &Vec<f64>, bias: bool) -> f64 {
     }
 }
 
-fn kurtosis(samples: &Vec<f64>, bias: bool) -> f64 {
+fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len() as f64;
     let mu = samples.iter().sum::<f64>() / n;
     let (mut m4, mut m2) = (0f64, 0f64);
 
     for v in samples {
-        m4 += (v - mu).powf(4.);
-        m2 += (v - mu).powf(2.);
+        let shift2 = (v - mu) * (v - mu);
+        m4 += shift2 * shift2;
+        m2 += shift2;
     }
 
     m4 /= n;
@@ -147,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_variance() {
-        let samples: Vec<f64> = [
+        let samples = [
             6.37717487e-01,
             -4.13245759e-01,
             -6.35436489e-01,
@@ -168,15 +170,14 @@ mod tests {
             5.59426799e-01,
             1.46734559e+00,
             7.57219266e-01,
-        ]
-        .to_vec();
+        ];
         assert!((variance(&samples, true) - 0.4333647219842476) < 1e-3);
         assert!((variance(&samples, false) - 0.45617339156236586) < 1e-3);
     }
 
     #[test]
     fn test_skewness() {
-        let samples: Vec<f64> = [
+        let samples = [
             6.37717487e-01,
             -4.13245759e-01,
             -6.35436489e-01,
@@ -197,15 +198,14 @@ mod tests {
             5.59426799e-01,
             1.46734559e+00,
             7.57219266e-01,
-        ]
-        .to_vec();
+        ];
         assert!((skewness(&samples, true) - 0.3027475074365746) < 1e-3);
         assert!((skewness(&samples, false) - 0.327868632598646) < 1e-3)
     }
 
     #[test]
     fn test_kurtosis() {
-        let samples: Vec<f64> = [
+        let samples = [
             6.37717487e-01,
             -4.13245759e-01,
             -6.35436489e-01,
@@ -226,8 +226,7 @@ mod tests {
             5.59426799e-01,
             1.46734559e+00,
             7.57219266e-01,
-        ]
-        .to_vec();
+        ];
         assert!((kurtosis(&samples, true) - -0.6516395832609172) < 1e-3);
         assert!((kurtosis(&samples, false) - -0.47713788797747014) < 1e-3);
     }
