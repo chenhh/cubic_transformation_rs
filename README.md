@@ -23,7 +23,7 @@ error function的gradient vector與hessian matrix。
 
 注意a,b,c,d不一定有解，此時給出最小化錯誤平方之參數值即可。
 
-已知關係式 Y=a+ bX + cX^2 + dX^3
+已知關係式 Y=a+ b*X + c*X^2 + d*X^3
 兩側取期望值得 E(Y) = a + bE(X) + cE(x^2) + dE(X^3) = f(a,b,c,d)
 
 Y^2 = (a+bX+cX^2 + d X^3)^2  兩側取期望值得E(Y^2)
@@ -37,10 +37,7 @@ Y^4 = (a+bX+cX^2 + d X^3)^4  兩側取期望值得E(Y^4)
     (E(Y^3)- f^3(a,b,c,d))^2 +
     (E(Y^4)- f^4(a,b,c,d))^2的(a,b,c,d)之值。
 
-
-可得gradient vector為[
-
-
-]
+由於任意隨機變數的skew和kurtosis不受縮放和平移的影響，因此可先使用E(Z)=0, E(Z^2)=1, E(Z^3)=target skew, E(Z^4)=target kurt, 
+求出Z對應於X的 a,b,c,d後，再計算Y=a+b*Z得到所求樣本。
  
 
