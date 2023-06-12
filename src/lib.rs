@@ -81,25 +81,24 @@ pub fn cubic_transformation_sampling(tgt_stats: &Statistics, n_scenario: usize) 
 
     let mut ex = [0f64; 12];
     for idx in 0..ex.len() {
-        ex[idx] =
-            xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / tgt_stats.n_sample as f64;
+        ex[idx] = xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / n_scenario as f64;
     }
 
     // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
-    let z_moments = [0f64, 1f64, tgt_stats.skew, tgt_stats.ex_kurt + 3.];
+    let z_moments = [0., 1., tgt_stats.skew, tgt_stats.ex_kurt + 3.];
 
     // using least square error algorithm to get params
     // let mut params = [0f64, 1f64, 0f64, 0f64];
 
     let problem = CubicProblem {
         p: Vector4::new(0., 1., 0., 0.),
-        ex: ex,
+        ex,
         ez: z_moments,
     };
     let (result, report) = LevenbergMarquardt::new().minimize(problem);
-    // println!("results: {:?}", result);
     let cubic_params = result.p;
     let obj_err = report.objective_function;
+    println!("obj_err: {obj_err}");
 
     let zs: Vec<f64> = xs
         .iter()
@@ -113,11 +112,19 @@ pub fn cubic_transformation_sampling(tgt_stats: &Statistics, n_scenario: usize) 
 
     let scenarios: Vec<f64> = zs
         .iter()
-        .map(|z| tgt_stats.mean + tgt_stats.var * z)
+        .map(|z| tgt_stats.mean + tgt_stats.var.sqrt() * z)
         .collect();
 
     println!(
-        "sample statistics:{}, {}, {}, {}",
+        "xs statistics:{}, {}, {}, {}",
+        mean(&xs),
+        variance(&xs, true),
+        skewness(&xs, true),
+        kurtosis(&xs, true)
+    );
+
+    println!(
+        "scenario statistics:{}, {}, {}, {}",
         mean(&scenarios),
         variance(&scenarios, true),
         skewness(&scenarios, true),
@@ -125,6 +132,17 @@ pub fn cubic_transformation_sampling(tgt_stats: &Statistics, n_scenario: usize) 
     );
 
     scenarios
+}
+
+fn rmse_statistics(tgt_stats: &Statistics, scenarios: &[f64]) -> f64 {
+    let mut errors = [0.; 4];
+    errors[0] = tgt_stats.mean - mean(scenarios);
+    errors[1] = tgt_stats.var - variance(scenarios, true);
+    errors[2] = tgt_stats.skew - skewness(scenarios, true);
+    errors[3] = tgt_stats.ex_kurt - kurtosis(scenarios, true);
+
+    let res = errors.iter().map(|x| x * x).sum::<f64>().sqrt();
+    res
 }
 
 #[derive(Debug)]
@@ -202,7 +220,7 @@ impl LeastSquaresProblem<f64, U4, U4> for CubicProblem {
     fn jacobian(&self) -> Option<Matrix4<f64>> {
         let [a, b, c, d] = [self.p.x, self.p.y, self.p.z, self.p.w];
         let ex = &self.ex;
-        let ez = &self.ez;
+
         // first row of Jacobian, derivatives of first residual
         let dxx = 1.;
         let dxy = ex[0];
@@ -377,12 +395,26 @@ mod tests {
     #[test]
     fn test_cubic() {
         let tgt = Statistics {
-            mean: 0.,
-            var: 1.,
-            skew: 0.,
-            ex_kurt: 0.,
+            mean: 10.,
+            var: 2.8,
+            skew: -1.6,
+            ex_kurt: 4.,
+            n_sample: 500,
+        };
+        let scenarios = cubic_transformation_sampling(&tgt, 10000);
+        let res = rmse_statistics(&tgt, &scenarios);
+        println!("rmse:{res}");
+        assert!(res < 1e-3);
+
+        let tgt = Statistics {
+            mean: 5.,
+            var: 1.6,
+            skew: 1.5,
+            ex_kurt: 2.,
             n_sample: 100,
         };
-        cubic_transformation_sampling(&tgt, 1000);
+        let scenarios = cubic_transformation_sampling(&tgt, 1000);
+        let res = rmse_statistics(&tgt, &scenarios);
+        println!("rmse:{res}");
     }
 }
