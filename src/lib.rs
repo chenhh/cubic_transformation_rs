@@ -1,3 +1,6 @@
+use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
+extern crate nalgebra as na;
+use na::{Matrix4, Owned, Vector4, U4};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 
@@ -9,10 +12,15 @@ pub struct Statistics {
     n_sample: u32,
 }
 
+fn mean(samples: &[f64]) -> f64 {
+    let n = samples.len() as f64;
+    samples.iter().sum::<f64>() / n
+}
+
 fn variance(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of numpy.var */
     let n = samples.len() as f64;
-    let mu = samples.iter().sum::<f64>() / n;
+    let mu = mean(samples);
     let mut var = samples.iter().map(|x| (*x - mu) * (*x - mu)).sum::<f64>();
     var /= match bias {
         true => n,
@@ -24,11 +32,11 @@ fn variance(samples: &[f64], bias: bool) -> f64 {
 fn skewness(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len() as f64;
-    let mu = samples.iter().sum::<f64>() / n;
+    let mu = mean(samples);
     let (mut m3, mut s3) = (0f64, 0f64);
 
     for v in samples {
-        let shift = (v - mu);
+        let shift = v - mu;
         let shift2 = shift * shift;
         s3 += shift2;
         m3 += shift2 * shift;
@@ -46,7 +54,7 @@ fn skewness(samples: &[f64], bias: bool) -> f64 {
 fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len() as f64;
-    let mu = samples.iter().sum::<f64>() / n;
+    let mu = mean(samples);
     let (mut m4, mut m2) = (0f64, 0f64);
 
     for v in samples {
@@ -72,111 +80,209 @@ pub fn cubic_transformation_sampling(tgt_stats: &Statistics, n_scenario: usize) 
         .collect();
 
     let mut ex = [0f64; 12];
-    for idx in 1..=ex.len() {
-        ex[idx] = xs.iter().map(|x| x.powf(idx as f64)).sum::<f64>() / tgt_stats.n_sample as f64;
+    for idx in 0..ex.len() {
+        ex[idx] =
+            xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / tgt_stats.n_sample as f64;
     }
 
     // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
-    let mut z_moments = [0f64, 1f64, tgt_stats.skew, tgt_stats.ex_kurt + 3.];
+    let z_moments = [0f64, 1f64, tgt_stats.skew, tgt_stats.ex_kurt + 3.];
 
     // using least square error algorithm to get params
-    let mut params = [0f64, 1f64, 0f64, 0f64];
+    // let mut params = [0f64, 1f64, 0f64, 0f64];
 
     let problem = CubicProblem {
         p: Vector4::new(0., 1., 0., 0.),
+        ex: ex,
+        ez: z_moments,
     };
-    let (_result, report) = LevenbergMarquardt::new().minimize(problem);
+    let (result, report) = LevenbergMarquardt::new().minimize(problem);
+    // println!("results: {:?}", result);
+    let cubic_params = result.p;
+    let obj_err = report.objective_function;
 
-    let mut scenarios = Vec::with_capacity(n_scenario);
-    // scenarios
-    //     .iter_mut()
-    //     .map(|x| params[0] + params[1] * x + params[2] * x.powf(2.) + params[3] * x.powf(3.));
+    let zs: Vec<f64> = xs
+        .iter()
+        .map(|x| {
+            cubic_params[0]
+                + cubic_params[1] * x
+                + cubic_params[2] * x * x
+                + cubic_params[3] * x * x * x
+        })
+        .collect();
+
+    let scenarios: Vec<f64> = zs
+        .iter()
+        .map(|z| tgt_stats.mean + tgt_stats.var * z)
+        .collect();
+
+    println!(
+        "sample statistics:{}, {}, {}, {}",
+        mean(&scenarios),
+        variance(&scenarios, true),
+        skewness(&scenarios, true),
+        kurtosis(&scenarios, true)
+    );
 
     scenarios
 }
 
-fn residuals(params: [f64; 4], ex: [f64; 12], ez: [f64; 4]) -> [f64; 4] {
-    let (a, b, c, d) = (params[0], params[1], params[2], params[3]);
-    let mut errors = [0f64; 4];
-
-    errors[0] = a + b * ex[0] + c * ex[1] + d * ex[2] - ez[0];
-
-    errors[1] = d * d * ex[5]
-        + 2. * c * d * ex[4]
-        + (2. * b * d + c * c) * ex[3]
-        + (2. * a * d + 2. * b * c) * ex[2]
-        + (2. * a * c + b * b) * ex[1]
-        + 2. * a * b * ex[0]
-        + a * a
-        - ez[1];
-
-    errors[2] = d * d * d * ex[8]
-        + 3. * c * d * d * ex[7]
-        + (3. * b * d * d + 3. * c * c * d) * ex[6]
-        + (3. * a * d * d + 6. * b * c * d + c * c * c) * ex[5]
-        + (6. * a * c * d + 3. * b * b * d + 3. * b * c * c) * ex[4]
-        + (a * (6. * b * d + 3. * c * c) + 3. * b * b * c) * ex[3]
-        + (3. * a * a * d + 6. * a * b * c + b * b * b) * ex[2]
-        + (3. * a * a * c + 3. * a * b * b) * ex[1]
-        + 3. * a * a * b * ex[0]
-        + a * a * a
-        - ez[2];
-
-    errors[3] = (d * d * d * d) * ex[11]
-        + (4. * c * d * d * d) * ex[10]
-        + (4. * b * d * d * d + 6. * c * c * d * d) * ex[9]
-        + (4. * a * d * d * d + 12. * b * c * d * d + 4. * c * c * c * d) * ex[8]
-        + (12. * a * c * d * d + 6. * b * b * d * d + 12. * b * c * c * d + c * c * c * c) * ex[7]
-        + (a * (12. * b * d * d + 12. * c * c * d) + 12. * b * b * c * d + 4. * b * c * c * c)
-            * ex[6]
-        + (6. * a * a * d * d
-            + a * (24. * b * c * d + 4. * c * c * c)
-            + 4. * b * b * b * d
-            + 6. * b * b * c * c)
-            * ex[5]
-        + (12. * a * a * c * d + a * (12. * b * b * d + 12. * b * c * c) + 4. * b * b * b * c)
-            * ex[4]
-        + (a * a * (12. * b * d + 6. * c * c) + 12. * a * b * b * c + b * b * b * b) * ex[3]
-        + (4. * a * a * a * d + 12. * a * a * b * c + 4. * a * b * b * b) * ex[2]
-        + (4. * a * a * a * c + 6. * a * a * b * b) * ex[1]
-        + (4. * a * a * a * b) * ex[0]
-        + a * a * a * a
-        - ez[3];
-
-    errors
-}
-
+#[derive(Debug)]
 struct CubicProblem {
     // holds current value of the n parameters
+    // the 4 dimensions are (x,y,z,w)
     p: Vector4<f64>,
+    ex: [f64; 12],
+    ez: [f64; 4],
 }
 
 impl LeastSquaresProblem<f64, U4, U4> for CubicProblem {
     type ParameterStorage = Owned<f64, U4>;
     type ResidualStorage = Owned<f64, U4>;
     type JacobianStorage = Owned<f64, U4, U4>;
-    fn set_params(&mut self, p: &VectorN<f64, U4>) {
+    fn set_params(&mut self, p: &Vector4<f64>) {
         self.p.copy_from(p);
-        // do common calculations for residuals and the Jacobian here
     }
 
-    fn params(&self) -> VectorN<f64, U2> {
+    fn params(&self) -> Vector4<f64> {
         self.p
     }
 
-    fn residuals(&self) -> Option<Vector2<f64>> {
-        let [x, y] = [self.p.x, self.p.y];
-        Some(Vector2::new(x * x + y - 11., x + y * y - 7.))
-    }
-    fn jacobian(&self) -> Option<Matrix2<f64>> {
-        let [x, y] = [self.p.x, self.p.y];
+    fn residuals(&self) -> Option<Vector4<f64>> {
+        let [a, b, c, d] = [self.p.x, self.p.y, self.p.z, self.p.w];
+        let ex = &self.ex;
+        let ez = &self.ez;
+        let mut errors = [0f64; 4];
+        errors[0] = a + b * ex[0] + c * ex[1] + d * ex[2] - ez[0];
+        errors[1] = d * d * ex[5]
+            + 2. * c * d * ex[4]
+            + (2. * b * d + c * c) * ex[3]
+            + (2. * a * d + 2. * b * c) * ex[2]
+            + (2. * a * c + b * b) * ex[1]
+            + 2. * a * b * ex[0]
+            + a * a
+            - ez[1];
 
+        errors[2] = d * d * d * ex[8]
+            + 3. * c * d * d * ex[7]
+            + (3. * b * d * d + 3. * c * c * d) * ex[6]
+            + (3. * a * d * d + 6. * b * c * d + c * c * c) * ex[5]
+            + (6. * a * c * d + 3. * b * b * d + 3. * b * c * c) * ex[4]
+            + (a * (6. * b * d + 3. * c * c) + 3. * b * b * c) * ex[3]
+            + (3. * a * a * d + 6. * a * b * c + b * b * b) * ex[2]
+            + (3. * a * a * c + 3. * a * b * b) * ex[1]
+            + 3. * a * a * b * ex[0]
+            + a * a * a
+            - ez[2];
+
+        errors[3] = (d * d * d * d) * ex[11]
+            + (4. * c * d * d * d) * ex[10]
+            + (4. * b * d * d * d + 6. * c * c * d * d) * ex[9]
+            + (4. * a * d * d * d + 12. * b * c * d * d + 4. * c * c * c * d) * ex[8]
+            + (12. * a * c * d * d + 6. * b * b * d * d + 12. * b * c * c * d + c * c * c * c)
+                * ex[7]
+            + (a * (12. * b * d * d + 12. * c * c * d) + 12. * b * b * c * d + 4. * b * c * c * c)
+                * ex[6]
+            + (6. * a * a * d * d
+                + a * (24. * b * c * d + 4. * c * c * c)
+                + 4. * b * b * b * d
+                + 6. * b * b * c * c)
+                * ex[5]
+            + (12. * a * a * c * d + a * (12. * b * b * d + 12. * b * c * c) + 4. * b * b * b * c)
+                * ex[4]
+            + (a * a * (12. * b * d + 6. * c * c) + 12. * a * b * b * c + b * b * b * b) * ex[3]
+            + (4. * a * a * a * d + 12. * a * a * b * c + 4. * a * b * b * b) * ex[2]
+            + (4. * a * a * a * c + 6. * a * a * b * b) * ex[1]
+            + (4. * a * a * a * b) * ex[0]
+            + a * a * a * a
+            - ez[3];
+
+        Some(Vector4::new(errors[0], errors[1], errors[2], errors[3]))
+    }
+    fn jacobian(&self) -> Option<Matrix4<f64>> {
+        let [a, b, c, d] = [self.p.x, self.p.y, self.p.z, self.p.w];
+        let ex = &self.ex;
+        let ez = &self.ez;
         // first row of Jacobian, derivatives of first residual
-        let d1_x = 2. * x;
-        let d1_y = 1.;
-        let d2_x = 1.;
-        let d2_y = 2. * y;
-        Some(Matrix2::new(d1_x, d1_y, d2_x, d2_y))
+        let dxx = 1.;
+        let dxy = ex[0];
+        let dxz = ex[1];
+        let dxw = ex[2];
+        let dyx = 2. * a + 2. * b * ex[0] + 2. * c * ex[1] + 2. * d * ex[2];
+        let dyy = 2. * a * ex[0] + 2. * b * ex[1] + 2. * c * ex[2] + 2. * d * ex[3];
+        let dyz = 2. * a * ex[1] + 2. * b * ex[2] + 2. * c * ex[3] + 2. * d * ex[4];
+        let dyw = 2. * a * ex[2] + 2. * b * ex[3] + 2. * c * ex[4] + 2. * d * ex[5];
+        let dzx = 3. * a * a
+            + 6. * a * b * ex[0]
+            + 6. * c * d * ex[4]
+            + 3. * d * d * ex[5]
+            + ex[1] * (6. * a * c + 3. * b * b)
+            + ex[2] * (6. * a * d + 6. * b * c)
+            + ex[3] * (6. * b * d + 3. * c * c);
+        let dzy = 3. * a * a * ex[0]
+            + 6. * a * b * ex[1]
+            + 6. * c * d * ex[5]
+            + 3. * d * d * ex[6]
+            + ex[2] * (6. * a * c + 3. * b * b)
+            + ex[3] * (6. * a * d + 6. * b * c)
+            + ex[4] * (6. * b * d + 3. * c * c);
+        let dzz = 3. * a * a * ex[1]
+            + 6. * a * b * ex[2]
+            + 6. * c * d * ex[6]
+            + 3. * d * d * ex[7]
+            + ex[3] * (6. * a * c + 3. * b * b)
+            + ex[4] * (6. * a * d + 6. * b * c)
+            + ex[5] * (6. * b * d + 3. * c * c);
+        let dzw = 3. * a * a * ex[2]
+            + 6. * a * b * ex[3]
+            + 6. * c * d * ex[7]
+            + 3. * d * d * ex[8]
+            + ex[4] * (6. * a * c + 3. * b * b)
+            + ex[5] * (6. * a * d + 6. * b * c)
+            + ex[6] * (6. * b * d + 3. * c * c);
+        let dwx = 4. * a * a * a
+            + 12. * a * a * b * ex[0]
+            + 12. * c * d * d * ex[7]
+            + 4. * d * d * d * ex[8]
+            + ex[1] * (12. * a * a * c + 12. * a * b * b)
+            + ex[2] * (12. * a * a * d + 24. * a * b * c + 4. * b * b * b)
+            + ex[3] * (2. * a * (12. * b * d + 6. * c * c) + 12. * b * b * c)
+            + ex[4] * (24. * a * c * d + 12. * b * b * d + 12. * b * c * c)
+            + ex[5] * (12. * a * d * d + 24. * b * c * d + 4. * c * c * c)
+            + ex[6] * (12. * b * d * d + 12. * c * c * d);
+        let dwy = 4. * a * a * a * ex[0]
+            + 12. * a * a * b * ex[1]
+            + 12. * c * d * d * ex[8]
+            + 4. * d * d * d * ex[9]
+            + ex[2] * (12. * a * a * c + 12. * a * b * b)
+            + ex[3] * (12. * a * a * d + 24. * a * b * c + 4. * b * b * b)
+            + ex[4] * (a * (24. * b * d + 12. * c * c) + 12. * b * b * c)
+            + ex[5] * (24. * a * c * d + 12. * b * b * d + 12. * b * c * c)
+            + ex[6] * (12. * a * d * d + 24. * b * c * d + 4. * c * c * c)
+            + ex[7] * (12. * b * d * d + 12. * c * c * d);
+        let dwz = 4. * a * a * a * ex[1]
+            + 12. * a * a * b * ex[2]
+            + 12. * c * d * d * ex[9]
+            + 4. * d * d * d * ex[10]
+            + ex[3] * (12. * a * a * c + 12. * a * b * b)
+            + ex[4] * (12. * a * a * d + 24. * a * b * c + 4. * b * b * b)
+            + ex[5] * (a * (24. * b * d + 12. * c * c) + 12. * b * b * c)
+            + ex[6] * (24. * a * c * d + 12. * b * b * d + 12. * b * c * c)
+            + ex[7] * (12. * a * d * d + 24. * b * c * d + 4. * c * c * c)
+            + ex[8] * (12. * b * d * d + 12. * c * c * d);
+        let dww = 4. * a * a * a * ex[2]
+            + 12. * a * a * b * ex[3]
+            + 12. * c * d * d * ex[10]
+            + 4. * d * d * d * ex[11]
+            + ex[4] * (12. * a * a * c + 12. * a * b * b)
+            + ex[5] * (12. * a * a * d + 24. * a * b * c + 4. * b * b * b)
+            + ex[6] * (a * (24. * b * d + 12. * c * c) + 12. * b * b * c)
+            + ex[7] * (24. * a * c * d + 12. * b * b * d + 12. * b * c * c)
+            + ex[8] * (12. * a * d * d + 24. * b * c * d + 4. * c * c * c)
+            + ex[9] * (12. * b * d * d + 12. * c * c * d);
+        Some(Matrix4::new(
+            dxx, dxy, dxz, dxw, dyx, dyy, dyz, dyw, dzx, dzy, dzz, dzw, dwx, dwy, dwz, dww,
+        ))
     }
 }
 
@@ -266,5 +372,17 @@ mod tests {
         ];
         assert!((kurtosis(&samples, true) - -0.6516395832609172) < 1e-3);
         assert!((kurtosis(&samples, false) - -0.47713788797747014) < 1e-3);
+    }
+
+    #[test]
+    fn test_cubic() {
+        let tgt = Statistics {
+            mean: 0.,
+            var: 1.,
+            skew: 0.,
+            ex_kurt: 0.,
+            n_sample: 100,
+        };
+        cubic_transformation_sampling(&tgt, 1000);
     }
 }
