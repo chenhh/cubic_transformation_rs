@@ -105,7 +105,7 @@ pub fn cubic_transformation_sampling(
             ex,
             ez: z_moments,
         };
-        let (result, report) = LevenbergMarquardt::new().minimize(problem);
+        let (result, _) = LevenbergMarquardt::new().minimize(problem);
         let cubic_params = result.p;
 
         let zs: Vec<f64> = xs
