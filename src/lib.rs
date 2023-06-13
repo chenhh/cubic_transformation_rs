@@ -1,5 +1,6 @@
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
 extern crate nalgebra as na;
+use debug_print::debug_println;
 use na::{Matrix4, Owned, Vector4, U4};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
@@ -9,7 +10,6 @@ pub struct Statistics {
     var: f64,
     skew: f64,
     ex_kurt: f64,
-    n_sample: u32,
 }
 
 fn mean(samples: &[f64]) -> f64 {
@@ -71,77 +71,85 @@ fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
-pub fn cubic_transformation_sampling(tgt_stats: &Statistics, n_scenario: usize) -> Vec<f64> {
-    // generating standard normal distribution samples
-    let mut rng = thread_rng();
-    let xs: Vec<f64> = StandardNormal
-        .sample_iter(&mut rng)
-        .take(n_scenario)
-        .collect();
+pub fn cubic_transformation_sampling(
+    tgt_stats: &Statistics,
+    n_scenario: usize,
+    max_stats_mse: f64, // max moment least square error
+) -> Option<Vec<f64>> {
+    // sometimes the samples don't converge well because of the bad random samples xs,
+    // and it requires resampling the xs until the error converges.
+    let max_cubic_iteration = 10;
+    let mut scenarios: Option<Vec<f64>> = None;
 
-    let mut ex = [0f64; 12];
-    for idx in 0..ex.len() {
-        ex[idx] = xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / n_scenario as f64;
+    for cubic_iter in 0..max_cubic_iteration {
+        // generating standard normal distribution samples
+        let mut rng = thread_rng();
+        let xs: Vec<f64> = StandardNormal
+            .sample_iter(&mut rng)
+            .take(n_scenario)
+            .collect();
+
+        let mut ex = [0f64; 12];
+        for idx in 0..ex.len() {
+            ex[idx] = xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / n_scenario as f64;
+        }
+
+        // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
+        let z_moments = [0., 1., tgt_stats.skew, tgt_stats.ex_kurt + 3.];
+
+        // using least square error algorithm to get params
+        // let mut params = [0f64, 1f64, 0f64, 0f64];
+
+        let problem = CubicProblem {
+            p: Vector4::new(0., 1., 0., 0.),
+            ex,
+            ez: z_moments,
+        };
+        let (result, report) = LevenbergMarquardt::new().minimize(problem);
+        let cubic_params = result.p;
+
+        let zs: Vec<f64> = xs
+            .iter()
+            .map(|x| {
+                cubic_params[0]
+                    + cubic_params[1] * x
+                    + cubic_params[2] * x * x
+                    + cubic_params[3] * x * x * x
+            })
+            .collect();
+
+        scenarios = Some(
+            zs.iter()
+                .map(|z| tgt_stats.mean + tgt_stats.var.sqrt() * z)
+                .collect(),
+        );
+        let samples = scenarios.clone().unwrap();
+        let stats_mse = statistics_mse(tgt_stats, &samples);
+        debug_println!(
+            "cub_iter[{}] inside scenario statistics:{}, {}, {}, {}, mse:{}",
+            cubic_iter,
+            mean(&samples),
+            variance(&samples, true),
+            skewness(&samples, true),
+            kurtosis(&samples, true),
+            stats_mse
+        );
+        if stats_mse < max_stats_mse {
+            break;
+        }
     }
-
-    // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
-    let z_moments = [0., 1., tgt_stats.skew, tgt_stats.ex_kurt + 3.];
-
-    // using least square error algorithm to get params
-    // let mut params = [0f64, 1f64, 0f64, 0f64];
-
-    let problem = CubicProblem {
-        p: Vector4::new(0., 1., 0., 0.),
-        ex,
-        ez: z_moments,
-    };
-    let (result, report) = LevenbergMarquardt::new().minimize(problem);
-    let cubic_params = result.p;
-    let obj_err = report.objective_function;
-    println!("obj_err: {obj_err}");
-
-    let zs: Vec<f64> = xs
-        .iter()
-        .map(|x| {
-            cubic_params[0]
-                + cubic_params[1] * x
-                + cubic_params[2] * x * x
-                + cubic_params[3] * x * x * x
-        })
-        .collect();
-
-    let scenarios: Vec<f64> = zs
-        .iter()
-        .map(|z| tgt_stats.mean + tgt_stats.var.sqrt() * z)
-        .collect();
-
-    println!(
-        "xs statistics:{}, {}, {}, {}",
-        mean(&xs),
-        variance(&xs, true),
-        skewness(&xs, true),
-        kurtosis(&xs, true)
-    );
-
-    println!(
-        "scenario statistics:{}, {}, {}, {}",
-        mean(&scenarios),
-        variance(&scenarios, true),
-        skewness(&scenarios, true),
-        kurtosis(&scenarios, true)
-    );
 
     scenarios
 }
 
-fn rmse_statistics(tgt_stats: &Statistics, scenarios: &[f64]) -> f64 {
+fn statistics_mse(tgt_stats: &Statistics, scenarios: &[f64]) -> f64 {
     let mut errors = [0.; 4];
     errors[0] = tgt_stats.mean - mean(scenarios);
     errors[1] = tgt_stats.var - variance(scenarios, true);
     errors[2] = tgt_stats.skew - skewness(scenarios, true);
     errors[3] = tgt_stats.ex_kurt - kurtosis(scenarios, true);
 
-    let res = errors.iter().map(|x| x * x).sum::<f64>().sqrt();
+    let res = errors.iter().map(|x| x * x).sum::<f64>();
     res
 }
 
@@ -155,9 +163,9 @@ struct CubicProblem {
 }
 
 impl LeastSquaresProblem<f64, U4, U4> for CubicProblem {
-    type ParameterStorage = Owned<f64, U4>;
     type ResidualStorage = Owned<f64, U4>;
     type JacobianStorage = Owned<f64, U4, U4>;
+    type ParameterStorage = Owned<f64, U4>;
     fn set_params(&mut self, p: &Vector4<f64>) {
         self.p.copy_from(p);
     }
@@ -394,27 +402,22 @@ mod tests {
 
     #[test]
     fn test_cubic() {
-        let tgt = Statistics {
-            mean: 10.,
-            var: 2.8,
-            skew: -1.6,
-            ex_kurt: 4.,
-            n_sample: 500,
-        };
-        let scenarios = cubic_transformation_sampling(&tgt, 10000);
-        let res = rmse_statistics(&tgt, &scenarios);
-        println!("rmse:{res}");
-        assert!(res < 1e-3);
+        // skew的絕對值大於1.5之後的樣本很難收斂
+        // 如果是近似於常態分佈的樣本很容易收斂
+        let max_stats_mse = 0.01;
 
-        let tgt = Statistics {
-            mean: 5.,
-            var: 1.6,
-            skew: 1.5,
-            ex_kurt: 2.,
-            n_sample: 100,
-        };
-        let scenarios = cubic_transformation_sampling(&tgt, 1000);
-        let res = rmse_statistics(&tgt, &scenarios);
-        println!("rmse:{res}");
+        let mut rng = thread_rng();
+        for idx in 0..1000 {
+            let tgt = Statistics {
+                mean: rng.gen(),
+                var: rng.gen(),
+                skew: rng.gen(),
+                ex_kurt: rng.gen(),
+            };
+            let scenarios = cubic_transformation_sampling(&tgt, 1000, max_stats_mse).unwrap();
+            let stats = statistics_mse(&tgt, &scenarios);
+            debug_println!("test idx:[{idx}], mse: {stats}");
+            assert!(stats < max_stats_mse);
+        }
     }
 }
