@@ -71,14 +71,39 @@ fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
+pub fn cubic_transformation_sampling_iter3(
+    tgt_stats: &Statistics,
+    n_scenario: usize,
+    max_stats_mse: f64,
+) -> Option<Vec<f64>> {
+    cubic_transformation_sampling(tgt_stats, n_scenario, max_stats_mse, 3)
+}
+
+pub fn cubic_transformation_sampling_iter5(
+    tgt_stats: &Statistics,
+    n_scenario: usize,
+    max_stats_mse: f64,
+) -> Option<Vec<f64>> {
+    cubic_transformation_sampling(tgt_stats, n_scenario, max_stats_mse, 5)
+}
+
+pub fn cubic_transformation_sampling_iter10(
+    tgt_stats: &Statistics,
+    n_scenario: usize,
+    max_stats_mse: f64,
+) -> Option<Vec<f64>> {
+    cubic_transformation_sampling(tgt_stats, n_scenario, max_stats_mse, 10)
+}
+
 pub fn cubic_transformation_sampling(
     tgt_stats: &Statistics,
     n_scenario: usize,
-    max_stats_mse: f64, // max moment least square error
+    max_stats_mse: f64,         // max moment least square error
+    max_cubic_iteration: usize, // max resampling times
 ) -> Option<Vec<f64>> {
     // sometimes the samples don't converge well because of the bad random samples xs,
     // and it requires resampling the xs until the error converges.
-    let max_cubic_iteration = 10;
+
     let mut scenarios: Option<Vec<f64>> = None;
 
     for cubic_iter in 0..max_cubic_iteration {
@@ -414,7 +439,8 @@ mod tests {
                 skew: rng.gen(),
                 ex_kurt: rng.gen(),
             };
-            let scenarios = cubic_transformation_sampling(&tgt, 1000, max_stats_mse).unwrap();
+            let scenarios =
+                cubic_transformation_sampling_iter10(&tgt, 1000, max_stats_mse).unwrap();
             let stats = statistics_mse(&tgt, &scenarios);
             debug_println!("test idx:[{idx}], mse: {stats}");
             assert!(stats < max_stats_mse);
