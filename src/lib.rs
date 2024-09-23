@@ -106,7 +106,7 @@ pub fn cubic_transformation_sampling(
 
     let mut scenarios: Option<Vec<f64>> = None;
 
-    for cubic_iter in 0..max_cubic_iteration {
+    for _cubic_iter in 0..max_cubic_iteration {
         // generating standard normal distribution samples
         let mut rng = thread_rng();
         let xs: Vec<f64> = StandardNormal
@@ -152,7 +152,7 @@ pub fn cubic_transformation_sampling(
         let stats_mse = statistics_mse(tgt_stats, &samples);
         debug_println!(
             "cub_iter[{}] inside scenario statistics:{}, {}, {}, {}, mse:{}",
-            cubic_iter,
+            _cubic_iter,
             mean(&samples),
             variance(&samples, true),
             skewness(&samples, true),
@@ -231,16 +231,16 @@ impl LeastSquaresProblem<f64, U4, U4> for CubicProblem {
             + (4. * b * d * d * d + 6. * c * c * d * d) * ex[9]
             + (4. * a * d * d * d + 12. * b * c * d * d + 4. * c * c * c * d) * ex[8]
             + (12. * a * c * d * d + 6. * b * b * d * d + 12. * b * c * c * d + c * c * c * c)
-                * ex[7]
+            * ex[7]
             + (a * (12. * b * d * d + 12. * c * c * d) + 12. * b * b * c * d + 4. * b * c * c * c)
-                * ex[6]
+            * ex[6]
             + (6. * a * a * d * d
-                + a * (24. * b * c * d + 4. * c * c * c)
-                + 4. * b * b * b * d
-                + 6. * b * b * c * c)
-                * ex[5]
+            + a * (24. * b * c * d + 4. * c * c * c)
+            + 4. * b * b * b * d
+            + 6. * b * b * c * c)
+            * ex[5]
             + (12. * a * a * c * d + a * (12. * b * b * d + 12. * b * c * c) + 4. * b * b * b * c)
-                * ex[4]
+            * ex[4]
             + (a * a * (12. * b * d + 6. * c * c) + 12. * a * b * b * c + b * b * b * b) * ex[3]
             + (4. * a * a * a * d + 12. * a * a * b * c + 4. * a * b * b * b) * ex[2]
             + (4. * a * a * a * c + 6. * a * a * b * b) * ex[1]
