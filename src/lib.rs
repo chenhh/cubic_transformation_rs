@@ -98,7 +98,7 @@ pub fn cubic_transformation_sampling_iter10(
 pub fn cubic_transformation_sampling(
     tgt_stats: &Statistics,
     n_scenario: usize,
-    max_stats_mse: f64,         // max moment least square error
+    max_stats_mse: f64,         // max moment the least square error
     max_cubic_iteration: usize, // max resampling times
 ) -> Option<Vec<f64>> {
     // sometimes the samples don't converge well because of the bad random samples xs,
@@ -122,7 +122,7 @@ pub fn cubic_transformation_sampling(
         // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
         let z_moments = [0., 1., tgt_stats.skew, tgt_stats.ex_kurt + 3.];
 
-        // using least square error algorithm to get params
+        // using the least square error algorithm to get params
         // let mut params = [0f64, 1f64, 0f64, 0f64];
 
         let problem = CubicProblem {
@@ -148,7 +148,7 @@ pub fn cubic_transformation_sampling(
                 .map(|z| tgt_stats.mean + tgt_stats.var.sqrt() * z)
                 .collect(),
         );
-        let samples = scenarios.clone().unwrap();
+        let samples = scenarios.clone()?;
         let stats_mse = statistics_mse(tgt_stats, &samples);
         debug_println!(
             "cub_iter[{}] inside scenario statistics:{}, {}, {}, {}, mse:{}",
