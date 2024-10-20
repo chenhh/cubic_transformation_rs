@@ -7,10 +7,10 @@ use rand::prelude::*;
 use rand_distr::StandardNormal;
 
 pub struct Statistics {
-    mean: f64,
-    var: f64,
-    skew: f64,
-    ex_kurt: f64,
+    pub mean: f64,
+    pub var: f64,
+    pub skew: f64,
+    pub ex_kurt: f64,
 }
 pub fn mean(samples: &[f64]) -> f64 {
     let n = samples.len();
