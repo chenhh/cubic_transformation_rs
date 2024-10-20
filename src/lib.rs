@@ -11,65 +11,150 @@ pub struct Statistics {
     skew: f64,
     ex_kurt: f64,
 }
-
 fn mean(samples: &[f64]) -> f64 {
-    let n = samples.len() as f64;
-    samples.iter().sum::<f64>() / n
+    let n = samples.len();
+    match n {
+        0 => 0.0,
+        _ => samples.iter().sum::<f64>() / n as f64,
+    }
 }
 
 fn variance(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of numpy.var */
-    let n = samples.len() as f64;
-    let mu = mean(samples);
-    let mut var = samples.iter().map(|x| (*x - mu) * (*x - mu)).sum::<f64>();
-    var /= match bias {
-        true => n,
-        false => n - 1.,
-    };
-    var
+    let n = samples.len();
+    match n {
+        0 => 0.0,
+        1 if !bias => 0.0,
+        _ => {
+            let n = n as f64;
+            let mu = mean(samples);
+            let mut var = samples.iter().map(|x| (*x - mu) * (*x - mu)).sum::<f64>();
+            var /= match bias {
+                true => n,
+                false => n - 1.,
+            };
+            var
+        }
+    }
 }
 
 fn skewness(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
-    let n = samples.len() as f64;
-    let mu = mean(samples);
-    let (mut m3, mut s3) = (0f64, 0f64);
+    let n = samples.len();
+    match n {
+        0 => 0.0,
+        1..=2 if !bias => 0.0,
+        _ => {
+            let n = n as f64;
+            let mu = mean(samples);
+            let (mut m3, mut s3) = (0f64, 0f64);
 
-    for v in samples {
-        let shift = v - mu;
-        let shift2 = shift * shift;
-        s3 += shift2;
-        m3 += shift2 * shift;
-    }
+            for v in samples {
+                let shift = v - mu;
+                let shift2 = shift * shift;
+                s3 += shift2;
+                m3 += shift2 * shift;
+            }
 
-    m3 /= n;
-    s3 /= n;
-    let res = m3 / s3.powf(1.5);
-    match bias {
-        true => res,
-        false => res * ((n - 1.) * n).sqrt() / (n - 2.),
+            m3 /= n;
+            s3 /= n;
+            let res = m3 / s3.powf(1.5);
+            match bias {
+                true => res,
+                false => res * ((n - 1.) * n).sqrt() / (n - 2.),
+            }
+        }
     }
 }
 
 fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
-    let n = samples.len() as f64;
-    let mu = mean(samples);
-    let (mut m4, mut m2) = (0f64, 0f64);
+    let n = samples.len();
+    match n {
+        0 => 0.0,
+        1..=3 if !bias => 0.0,
+        _ => {
+            let n = n as f64;
+            let mu = mean(samples);
+            let (mut m4, mut m2) = (0f64, 0f64);
 
-    for v in samples {
-        let shift2 = (v - mu) * (v - mu);
-        m4 += shift2 * shift2;
-        m2 += shift2;
-    }
+            for v in samples {
+                let shift2 = (v - mu) * (v - mu);
+                m4 += shift2 * shift2;
+                m2 += shift2;
+            }
 
-    m4 /= n;
-    m2 /= n;
-    match bias {
-        true => m4 / m2 / m2 - 3.,
-        false => (n - 1.) / (n - 2.) / (n - 3.) * ((n + 1.) * m4 / m2 / m2 - 3. * (n - 1.)),
+            m4 /= n;
+            m2 /= n;
+            match bias {
+                true => m4 / m2 / m2 - 3.,
+                false => {
+                    (n - 1.) / (n - 2.) / (n - 3.) * ((n + 1.) * m4 / m2 / m2 - 3. * (n - 1.))
+                }
+            }
+        }
     }
 }
+
+
+// fn mean(samples: &[f64]) -> f64 {
+//     let n = samples.len() as f64;
+//     samples.iter().sum::<f64>() / n
+// }
+//
+// fn variance(samples: &[f64], bias: bool) -> f64 {
+//     /* biased estimator, as the same default value of numpy.var */
+//     let n = samples.len() as f64;
+//     let mu = mean(samples);
+//     let mut var = samples.iter().map(|x| (*x - mu) * (*x - mu)).sum::<f64>();
+//     var /= match bias {
+//         true => n,
+//         false => n - 1.,
+//     };
+//     var
+// }
+//
+// fn skewness(samples: &[f64], bias: bool) -> f64 {
+//     /* biased estimator, as the same default value of scipy.stats.kurtosis */
+//     let n = samples.len() as f64;
+//     let mu = mean(samples);
+//     let (mut m3, mut s3) = (0f64, 0f64);
+//
+//     for v in samples {
+//         let shift = v - mu;
+//         let shift2 = shift * shift;
+//         s3 += shift2;
+//         m3 += shift2 * shift;
+//     }
+//
+//     m3 /= n;
+//     s3 /= n;
+//     let res = m3 / s3.powf(1.5);
+//     match bias {
+//         true => res,
+//         false => res * ((n - 1.) * n).sqrt() / (n - 2.),
+//     }
+// }
+//
+// fn kurtosis(samples: &[f64], bias: bool) -> f64 {
+//     /* biased estimator, as the same default value of scipy.stats.kurtosis */
+//     let n = samples.len() as f64;
+//     let mu = mean(samples);
+//     let (mut m4, mut m2) = (0f64, 0f64);
+//
+//     for v in samples {
+//         let shift2 = (v - mu) * (v - mu);
+//         m4 += shift2 * shift2;
+//         m2 += shift2;
+//     }
+//
+//     m4 /= n;
+//     m2 /= n;
+//     match bias {
+//         true => m4 / m2 / m2 - 3.,
+//         false => (n - 1.) / (n - 2.) / (n - 3.) * ((n + 1.) * m4 / m2 / m2 - 3. * (n - 1.)),
+//     }
+// }
 
 pub fn cubic_transformation_sampling_iter3(
     tgt_stats: &Statistics,
@@ -432,7 +517,7 @@ mod tests {
         let max_stats_mse = 0.01;
 
         let mut rng = thread_rng();
-        for idx in 0..1000 {
+        for _idx in 0..1000 {
             let tgt = Statistics {
                 mean: rng.gen(),
                 var: rng.gen(),
