@@ -12,7 +12,7 @@ pub struct Statistics {
     skew: f64,
     ex_kurt: f64,
 }
-fn mean(samples: &[f64]) -> f64 {
+pub fn mean(samples: &[f64]) -> f64 {
     let n = samples.len();
     match n {
         0 => 0.0,
@@ -20,7 +20,7 @@ fn mean(samples: &[f64]) -> f64 {
     }
 }
 
-fn variance(samples: &[f64], bias: bool) -> f64 {
+pub fn variance(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of numpy.var */
     let n = samples.len();
     match n {
@@ -39,7 +39,7 @@ fn variance(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
-fn skewness(samples: &[f64], bias: bool) -> f64 {
+pub fn skewness(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len();
     match n {
@@ -68,7 +68,7 @@ fn skewness(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
-fn kurtosis(samples: &[f64], bias: bool) -> f64 {
+pub fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len();
     match n {
