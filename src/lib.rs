@@ -97,66 +97,6 @@ fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
-
-// fn mean(samples: &[f64]) -> f64 {
-//     let n = samples.len() as f64;
-//     samples.iter().sum::<f64>() / n
-// }
-//
-// fn variance(samples: &[f64], bias: bool) -> f64 {
-//     /* biased estimator, as the same default value of numpy.var */
-//     let n = samples.len() as f64;
-//     let mu = mean(samples);
-//     let mut var = samples.iter().map(|x| (*x - mu) * (*x - mu)).sum::<f64>();
-//     var /= match bias {
-//         true => n,
-//         false => n - 1.,
-//     };
-//     var
-// }
-//
-// fn skewness(samples: &[f64], bias: bool) -> f64 {
-//     /* biased estimator, as the same default value of scipy.stats.kurtosis */
-//     let n = samples.len() as f64;
-//     let mu = mean(samples);
-//     let (mut m3, mut s3) = (0f64, 0f64);
-//
-//     for v in samples {
-//         let shift = v - mu;
-//         let shift2 = shift * shift;
-//         s3 += shift2;
-//         m3 += shift2 * shift;
-//     }
-//
-//     m3 /= n;
-//     s3 /= n;
-//     let res = m3 / s3.powf(1.5);
-//     match bias {
-//         true => res,
-//         false => res * ((n - 1.) * n).sqrt() / (n - 2.),
-//     }
-// }
-//
-// fn kurtosis(samples: &[f64], bias: bool) -> f64 {
-//     /* biased estimator, as the same default value of scipy.stats.kurtosis */
-//     let n = samples.len() as f64;
-//     let mu = mean(samples);
-//     let (mut m4, mut m2) = (0f64, 0f64);
-//
-//     for v in samples {
-//         let shift2 = (v - mu) * (v - mu);
-//         m4 += shift2 * shift2;
-//         m2 += shift2;
-//     }
-//
-//     m4 /= n;
-//     m2 /= n;
-//     match bias {
-//         true => m4 / m2 / m2 - 3.,
-//         false => (n - 1.) / (n - 2.) / (n - 3.) * ((n + 1.) * m4 / m2 / m2 - 3. * (n - 1.)),
-//     }
-// }
-
 pub fn cubic_transformation_sampling_iter3(
     tgt_stats: &Statistics,
     n_scenario: usize,
@@ -200,6 +140,7 @@ pub fn cubic_transformation_sampling(
             .take(n_scenario)
             .collect();
 
+        // 1 to 12th moments of the samples
         let mut ex = [0f64; 12];
         for idx in 0..ex.len() {
             ex[idx] = xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / n_scenario as f64;
