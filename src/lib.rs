@@ -141,10 +141,11 @@ pub fn cubic_transformation_sampling(
             .collect();
 
         // 1 to 12th moments of the samples
-        let mut ex = [0f64; 12];
-        for idx in 0..ex.len() {
-            ex[idx] = xs.iter().map(|x| x.powf(idx as f64 + 1.)).sum::<f64>() / n_scenario as f64;
-        }
+        let ex: [f64; 12] = (1..=12)
+            .map(|pdx| xs.iter().map(|&x| x.powi(pdx)).sum::<f64>() / n_scenario as f64)
+            .collect::<Vec<_>>()
+            .try_into()
+            .expect("can't generating 1~12th moments.");
 
         // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
         let z_moments = [0., 1., tgt_stats.skew, tgt_stats.ex_kurt + 3.];
