@@ -1,5 +1,6 @@
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
-extern crate nalgebra as na;
+// extern crate nalgebra as na;
+use nalgebra as na;
 use debug_print::debug_println;
 use na::{Matrix4, Owned, Vector4, U4};
 use rand::prelude::*;
@@ -427,7 +428,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_mean() {
+        let zero_sample: [f64; 0] = [];
+        assert!((mean(&zero_sample) - 0.) < 1e-3);
+    }
+
+    #[test]
     fn test_variance() {
+        let zero_sample: [f64; 0] = [];
+        let one_sample = [1., ];
         let samples = [
             6.37717487e-01,
             -4.13245759e-01,
@@ -450,12 +459,19 @@ mod tests {
             1.46734559e+00,
             7.57219266e-01,
         ];
+        assert!((variance(&zero_sample, false) - 0.) < 1e-3);
+        assert!((variance(&zero_sample, true) - 0.) < 1e-3);
+        assert!((variance(&one_sample, false) - 0.) < 1e-3);
+        assert!((variance(&one_sample, true) - 1.) < 1e-3);
         assert!((variance(&samples, true) - 0.4333647219842476) < 1e-3);
         assert!((variance(&samples, false) - 0.45617339156236586) < 1e-3);
     }
 
     #[test]
     fn test_skewness() {
+        let zero_sample: [f64; 0] = [];
+
+
         let samples = [
             6.37717487e-01,
             -4.13245759e-01,
@@ -478,12 +494,15 @@ mod tests {
             1.46734559e+00,
             7.57219266e-01,
         ];
+        assert!((skewness(&zero_sample, false) - 0.) < 1e-3);
+        assert!((skewness(&zero_sample, true) - 0.) < 1e-3);
         assert!((skewness(&samples, true) - 0.3027475074365746) < 1e-3);
         assert!((skewness(&samples, false) - 0.327868632598646) < 1e-3)
     }
 
     #[test]
     fn test_kurtosis() {
+        let zero_sample: [f64; 0] = [];
         let samples = [
             6.37717487e-01,
             -4.13245759e-01,
@@ -506,6 +525,8 @@ mod tests {
             1.46734559e+00,
             7.57219266e-01,
         ];
+        assert!((kurtosis(&zero_sample, false) - 0.) < 1e-3);
+        assert!((kurtosis(&zero_sample, true) - 0.) < 1e-3);
         assert!((kurtosis(&samples, true) - -0.6516395832609172) < 1e-3);
         assert!((kurtosis(&samples, false) - -0.47713788797747014) < 1e-3);
     }
@@ -517,7 +538,7 @@ mod tests {
         let max_stats_mse = 0.01;
 
         let mut rng = thread_rng();
-        for _idx in 0..1000 {
+        for idx in 0..1000 {
             let tgt = Statistics {
                 mean: rng.gen(),
                 var: rng.gen(),
