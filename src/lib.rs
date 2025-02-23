@@ -1,31 +1,41 @@
 use levenberg_marquardt::{LeastSquaresProblem, LevenbergMarquardt};
 // extern crate nalgebra as na;
-use nalgebra as na;
 use debug_print::debug_println;
 use na::{Matrix4, Owned, Vector4, U4};
+use nalgebra as na;
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 
+/// 機率分佈的四階(中央)動差(central moments)
+/// ex_kurt是原始的四階中央動差(常態分佈的峰度是原始峰度-3)
 pub struct Statistics {
     pub mean: f64,
     pub var: f64,
     pub skew: f64,
     pub ex_kurt: f64,
 }
+
+/// 計算樣本的平均值
 pub fn mean(samples: &[f64]) -> f64 {
     let n = samples.len();
     match n {
+        // 處理樣本數為0的特例
         0 => 0.0,
+        // 計算樣本均值
         _ => samples.iter().sum::<f64>() / n as f64,
     }
 }
 
+/// 計算樣本的變異數, bias為true時，分子為n，否則為n-1
 pub fn variance(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of numpy.var */
     let n = samples.len();
     match n {
+        // 樣本數為0回傳0
         0 => 0.0,
+        // 樣本數1且bias=False(分子為n-1)回傳0
         1 if !bias => 0.0,
+        // 計算樣本變異數
         _ => {
             let n = n as f64;
             let mu = mean(samples);
@@ -39,12 +49,16 @@ pub fn variance(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
+/// 計算樣本的偏度, bias為true時要特別處理
 pub fn skewness(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len();
     match n {
+        // 樣本數為0回傳0
         0 => 0.0,
+        // 1<=樣本數<=2且bias=False(分子為(n-1)(n-2))回傳0
         1..=2 if !bias => 0.0,
+        // 計算樣本偏度
         _ => {
             let n = n as f64;
             let mu = mean(samples);
@@ -68,12 +82,16 @@ pub fn skewness(samples: &[f64], bias: bool) -> f64 {
     }
 }
 
+/// 計算樣本的峰度, bias為true時要特別處理
 pub fn kurtosis(samples: &[f64], bias: bool) -> f64 {
     /* biased estimator, as the same default value of scipy.stats.kurtosis */
     let n = samples.len();
     match n {
+        // 樣本數為0回傳0
         0 => 0.0,
+        // 1<=樣本數<=3且bias=False(分子為(n-1)(n-2)(n-3))回傳0
         1..=3 if !bias => 0.0,
+        // 計算樣本峰度
         _ => {
             let n = n as f64;
             let mu = mean(samples);
@@ -89,9 +107,7 @@ pub fn kurtosis(samples: &[f64], bias: bool) -> f64 {
             m2 /= n;
             match bias {
                 true => m4 / m2 / m2 - 3.,
-                false => {
-                    (n - 1.) / (n - 2.) / (n - 3.) * ((n + 1.) * m4 / m2 / m2 - 3. * (n - 1.))
-                }
+                false => (n - 1.) / (n - 2.) / (n - 3.) * ((n + 1.) * m4 / m2 / m2 - 3. * (n - 1.)),
             }
         }
     }
@@ -121,38 +137,47 @@ pub fn cubic_transformation_sampling_iter10(
     cubic_transformation_sampling(tgt_stats, n_scenario, max_stats_mse, 10)
 }
 
+/// 三次轉換抽樣函數
+///
+/// # 引數
+/// - `tgt_stats`: 目標分佈的四個動差。
+/// - `n_scenario`: 生成的樣本數
+/// - `max_stats_mse`: 生成樣本與目標分佈之四個動差的MSE最大值
+/// - `max_cubic_iteration`: 生成樣本的動差MSE太大時，重新生成樣本的最大次數
+///
+/// # 返回值
+/// 滿足目標動差的生成樣本，如果無法生成時傳回None
+///
 pub fn cubic_transformation_sampling(
     tgt_stats: &Statistics,
     n_scenario: usize,
     max_stats_mse: f64,         // max moment the least square error
     max_cubic_iteration: usize, // max resampling times
 ) -> Option<Vec<f64>> {
-    // sometimes the samples don't converge well because of the bad random samples xs,
-    // and it requires resampling the xs until the error converges.
-
+    // 待生成樣本
     let mut scenarios: Option<Vec<f64>> = None;
 
     for _cubic_iter in 0..max_cubic_iteration {
-        // generating standard normal distribution samples
+        // 由標準常態分佈生成原始樣本
         let mut rng = thread_rng();
         let xs: Vec<f64> = StandardNormal
             .sample_iter(&mut rng)
             .take(n_scenario)
             .collect();
 
-        // 1 to 12th moments of the samples
+        // 計算原始樣本的12階原始動差
         let ex: [f64; 12] = (1..=12)
             .map(|pdx| xs.iter().map(|&x| x.powi(pdx)).sum::<f64>() / n_scenario as f64)
             .collect::<Vec<_>>()
             .try_into()
             .expect("can't generating 1~12th moments.");
 
+        // 要生成的目標動差
         // to generate samples Z with zero mean, unit variance, the same skew and kurt with tgt.
         let z_moments = [0., 1., tgt_stats.skew, tgt_stats.ex_kurt + 3.];
 
-        // using the least square error algorithm to get params
-        // let mut params = [0f64, 1f64, 0f64, 0f64];
-
+        // 使用最小平方法計算由目標動差轉換所需的參數
+        // 初始點設為[0,1,0,0]
         let problem = CubicProblem {
             p: Vector4::new(0., 1., 0., 0.),
             ex,
@@ -161,6 +186,8 @@ pub fn cubic_transformation_sampling(
         let (result, _) = LevenbergMarquardt::new().minimize(problem);
         let cubic_params = result.p;
 
+        // 由標準常態分佈樣本做三次轉換得目標樣本
+        // 此時目標樣本的偏度與峰度已經和目標動差相同，但是平均值和變異數仍為0,1
         let zs: Vec<f64> = xs
             .iter()
             .map(|x| {
@@ -171,11 +198,15 @@ pub fn cubic_transformation_sampling(
             })
             .collect();
 
+        // 將目標樣本的平均值與變異數修正為目標動差值
+        // 目標樣本的偏度與峰度不受影響
+        // 此時目標樣本的動差應與目標動差相同
         scenarios = Some(
             zs.iter()
                 .map(|z| tgt_stats.mean + tgt_stats.var.sqrt() * z)
                 .collect(),
         );
+        // 計算目標樣本動差的MSE
         let samples = scenarios.clone()?;
         let stats_mse = statistics_mse(tgt_stats, &samples);
         debug_println!(
@@ -195,6 +226,7 @@ pub fn cubic_transformation_sampling(
     scenarios
 }
 
+/// 內部函數，用於計算生成樣本的動差與目標動差誤差總和的平方(MSE)
 fn statistics_mse(tgt_stats: &Statistics, scenarios: &[f64]) -> f64 {
     let mut errors = [0.; 4];
     errors[0] = tgt_stats.mean - mean(scenarios);
@@ -259,16 +291,16 @@ impl LeastSquaresProblem<f64, U4, U4> for CubicProblem {
             + (4. * b * d * d * d + 6. * c * c * d * d) * ex[9]
             + (4. * a * d * d * d + 12. * b * c * d * d + 4. * c * c * c * d) * ex[8]
             + (12. * a * c * d * d + 6. * b * b * d * d + 12. * b * c * c * d + c * c * c * c)
-            * ex[7]
+                * ex[7]
             + (a * (12. * b * d * d + 12. * c * c * d) + 12. * b * b * c * d + 4. * b * c * c * c)
-            * ex[6]
+                * ex[6]
             + (6. * a * a * d * d
-            + a * (24. * b * c * d + 4. * c * c * c)
-            + 4. * b * b * b * d
-            + 6. * b * b * c * c)
-            * ex[5]
+                + a * (24. * b * c * d + 4. * c * c * c)
+                + 4. * b * b * b * d
+                + 6. * b * b * c * c)
+                * ex[5]
             + (12. * a * a * c * d + a * (12. * b * b * d + 12. * b * c * c) + 4. * b * b * b * c)
-            * ex[4]
+                * ex[4]
             + (a * a * (12. * b * d + 6. * c * c) + 12. * a * b * b * c + b * b * b * b) * ex[3]
             + (4. * a * a * a * d + 12. * a * a * b * c + 4. * a * b * b * b) * ex[2]
             + (4. * a * a * a * c + 6. * a * a * b * b) * ex[1]
@@ -278,6 +310,7 @@ impl LeastSquaresProblem<f64, U4, U4> for CubicProblem {
 
         Some(Vector4::new(errors[0], errors[1], errors[2], errors[3]))
     }
+    /// 此處的Jacobian函數是residuals生成，以gradient_hessian.py計算得出
     fn jacobian(&self) -> Option<Matrix4<f64>> {
         let [a, b, c, d] = [self.p.x, self.p.y, self.p.z, self.p.w];
         let ex = &self.ex;
@@ -378,7 +411,7 @@ mod tests {
     #[test]
     fn test_variance() {
         let zero_sample: [f64; 0] = [];
-        let one_sample = [1., ];
+        let one_sample = [1.];
         let samples = [
             6.37717487e-01,
             -4.13245759e-01,
@@ -412,7 +445,6 @@ mod tests {
     #[test]
     fn test_skewness() {
         let zero_sample: [f64; 0] = [];
-
 
         let samples = [
             6.37717487e-01,
